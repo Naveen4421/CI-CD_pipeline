@@ -1,0 +1,69 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  IMAGE_NAME: node-app
+
+jobs: 
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Setup Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+
+    - name: Install Dependencies
+      run: npm install
+
+    - name: Run Tests
+      run: npm test
+
+    # 🐳 Build Docker Image
+    - name: Build Docker Image
+      run: |
+        docker build -t naveen4421/$IMAGE_NAME:latest .
+
+    # 🔐 Login to DockerHub
+    - name: Login to DockerHub
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "naveen4421" --password-stdin
+
+    # 📤 Push Image
+    - name: Push Image
+      run: |
+        docker push naveen4421/$IMAGE_NAME:latest
+
+    # ☸️ Setup kubectl
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+
+    # 🔑 Set kubeconfig
+    - name: Set kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+
+    # 🚀 Deploy
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+
+    # ✅ Verify rollout
+    - name: Verify Deployment
+      run: |
+        kubectl rollout status deployment/node-app
+
+    # 🔄 Rollback if anything fails
+    - name: Rollback Deployment
+      if: failure()
+      run: |
+        kubectl rollout undo deployment/node-app
